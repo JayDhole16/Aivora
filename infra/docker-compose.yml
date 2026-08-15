@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aivora-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aivora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aivora}
+      POSTGRES_DB: ${POSTGRES_DB:-aivora}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aivora} -d ${POSTGRES_DB:-aivora}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: aivora-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: aivora-api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aivora}:${POSTGRES_PASSWORD:-aivora}@postgres:5432/${POSTGRES_DB:-aivora}?schema=public
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      API_BASE_URL: http://localhost:3001
+      
+      # Auth
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-your-super-secret-access-key-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-super-secret-refresh-key-change-in-production}
+      OTP_SECRET: ${OTP_SECRET:-aivora-otp-secret}
+      
+      # OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3001/api/auth/google/callback}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_CALLBACK_URL: ${MICROSOFT_CALLBACK_URL:-http://localhost:3001/api/auth/microsoft/callback}
+      
+      # Secrets
+      SECRETS_PROVIDER: ${SECRETS_PROVIDER:-local}
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:-}
+      AWS_KMS_REGION: ${AWS_KMS_REGION:-}
+      AWS_KMS_KEY_ID: ${AWS_KMS_KEY_ID:-}
+      
+      # Embeddings
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../apps/api:/app
+      - /app/node_modules
+
+  ai-orchestrator:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.ai-orchestrator
+    container_name: aivora-ai-orchestrator
+    environment:
+      AIVORA_API_URL: http://api:3001
+      AIVORA_API_KEY: ${AIVORA_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: DEBUG
+    ports:
+      - "8000:8000"
+    depends_on:
+      - api
+      - redis
+    volumes:
+      - ../apps/ai-orchestrator:/app
+      - /app/.venv
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,732 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum OrgRole {
+  owner
+  admin
+  agent
+  viewer
+}
+
+enum ServiceType {
+  voice
+  whatsapp
+  website
+}
+
+enum ServiceStatus {
+  draft
+  preview
+  live
+  paused
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  cancelled
+  no_show
+  completed
+}
+
+enum ConversationStatus {
+  active
+  ended
+  escalated
+}
+
+enum ConversationChannel {
+  voice
+  whatsapp
+  web
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+enum CallDirection {
+  inbound
+  outbound
+}
+
+enum CallStatus {
+  initiated
+  ringing
+  answered
+  completed
+  failed
+  busy
+  no_answer
+}
+
+enum CallOutcome {
+  booked
+  escalated
+  message_taken
+  hangup
+  failed
+}
+
+enum CredentialType {
+  twilio
+  meta_whatsapp
+  openai
+  anthropic
+  deepgram
+  elevenlabs
+  azure_tts
+  google_calendar
+  outlook_calendar
+  s3_storage
+  other
+}
+
+enum CredentialStatus {
+  connected
+  disconnected
+  error
+  validating
+}
+
+enum PhoneNumberStatus {
+  active
+  released
+  pending
+}
+
+enum NotificationType {
+  appointment_reminder_24h
+  appointment_reminder_1h
+  appointment_confirmed
+  appointment_cancelled
+  appointment_rescheduled
+  call_missed
+  voicemail_received
+  whatsapp_inbound
+  system
+}
+
+enum NotificationChannel {
+  email
+  sms
+  whatsapp
+  push
+  in_app
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  delivered
+}
+
+enum SubscriptionPlanInterval {
+  month
+  year
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  cancelled
+  incomplete
+}
+
+enum CalendarProvider {
+  google
+  outlook
+}
+
+enum CalendarConnectionStatus {
+  connected
+  disconnected
+  error
+}
+
+enum WhatsAppTemplateCategory {
+  marketing
+  utility
+  authentication
+}
+
+enum WhatsAppTemplateStatus {
+  pending
+  approved
+  rejected
+}
+
+enum AuditActorType {
+  user
+  system
+  api_key
+}
+
+// Tables
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime? @db.Timestamptz
+
+  members       OrgMember[]
+  businessProfile BusinessProfile?
+  services      Service[]
+  knowledgeBase KnowledgeBaseEntry[]
+  credentials   Credential[]
+  phoneNumbers  PhoneNumber[]
+  appointments  Appointment[]
+  conversations Conversation[]
+  callLogs      CallLog[]
+  notifications Notification[]
+  subscriptions Subscription[]
+  usageRecords  UsageRecord[]
+  auditLogs     AuditLog[]
+  staff         Staff[]
+  appointmentServices AppointmentService[]
+  calendarConnections CalendarConnection[]
+  whatsappBotConfigs WhatsAppBotConfig[]
+  whatsappTemplates WhatsAppTemplate[]
+  websiteConfigs WebsiteConfig[]
+  templatesLibrary TemplateLibrary[]
+  secretStores  SecretStore[]
+
+  @@index([slug])
+  @@index([deletedAt])
+}
+
+model SecretStore {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @db.Uuid
+  ref       String   @unique
+  ciphertext Bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  name          String?
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  passwordHash  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orgMembers OrgMember[]
+  auditLogs  AuditLog[]
+}
+
+model OrgMember {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @db.Uuid
+  userId      String   @db.Uuid
+  role        OrgRole  @default(viewer)
+  invitedBy   String?  @db.Uuid
+  invitedAt   DateTime?
+  acceptedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inviter      User?        @relation("OrgMemberInviter", fields: [invitedBy], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+}
+
+model BusinessProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @unique @db.Uuid
+  name      String
+  description String?
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  timezone  String   @default("UTC")
+  logoUrl   String?
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeBaseEntry {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @db.Uuid
+  title         String
+  content       String   @db.Text
+  embedding     Unsupported("vector(1536)")?
+  metadata      Json     @default("{}")
+  source        String   @default("manual")
+  sourceDocumentId String? @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([source])
+}
+
+model Service {
+  id        String       @id @default(uuid()) @db.Uuid
+  orgId     String       @db.Uuid
+  type      ServiceType
+  name      String
+  status    ServiceStatus @default(draft)
+  config    Json         @default("{}")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  voiceAgentConfig VoiceAgentConfig?
+  whatsappBotConfig WhatsAppBotConfig?
+  websiteConfig WebsiteConfig?
+  phoneNumbers PhoneNumber[]
+  conversations Conversation[]
+  appointmentServices AppointmentService[]
+
+  @@index([orgId, type])
+  @@index([orgId, status])
+}
+
+model VoiceAgentConfig {
+  id                    String   @id @default(uuid()) @db.Uuid
+  orgId                 String   @db.Uuid
+  serviceId             String   @unique @db.Uuid
+  personaName           String
+  greetingScript        String   @db.Text
+  voiceId               String
+  escalationNumber      String?
+  businessHoursOverride Json?
+  bargeInEnabled        Boolean  @default(false)
+  maxCallDurationSeconds Int     @default(300)
+  recordingEnabled      Boolean  @default(true)
+  consentMessage        String   @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model AppointmentService {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orgId               String   @db.Uuid
+  name                String
+  description         String?
+  durationMinutes     Int
+  bufferBeforeMinutes Int      @default(0)
+  bufferAfterMinutes  Int      @default(0)
+  priceCents          Int?
+  currency            String   @default("USD")
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [id], references: [id], onDelete: Cascade)
+  staff        Staff[]
+  appointments Appointment[]
+
+  @@index([orgId])
+  @@index([isActive])
+}
+
+model Staff {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orgId               String   @db.Uuid
+  name                String
+  email               String?
+  phone               String?
+  workingHours        Json
+  servicesOffered     String[] @db.Uuid
+  calendarConnectionId String? @db.Uuid
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calendarConnection CalendarConnection? @relation(fields: [calendarConnectionId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+
+  @@index([orgId])
+  @@index([isActive])
+}
+
+model Appointment {
+  id            String           @id @default(uuid()) @db.Uuid
+  orgId         String           @db.Uuid
+  serviceId     String           @db.Uuid
+  staffId       String?          @db.Uuid
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  startTime     DateTime         @db.Timestamptz
+  endTime       DateTime         @db.Timestamptz
+  timezone      String
+  status        AppointmentStatus @default(pending)
+  notes         String?
+  metadata      Json             @default("{}")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      AppointmentService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  staff        Staff?         @relation(fields: [staffId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([serviceId])
+  @@index([staffId])
+  @@index([startTime])
+  @@index([status])
+  @@index([orgId, startTime, endTime])
+}
+
+model Conversation {
+  id                String             @id @default(uuid()) @db.Uuid
+  orgId             String             @db.Uuid
+  serviceId         String?            @db.Uuid
+  channel           ConversationChannel
+  customerIdentifier String
+  status            ConversationStatus @default(active)
+  metadata          Json               @default("{}")
+  isSandbox         Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  endedAt           DateTime?
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  messages     Message[]
+  callLogs     CallLog[]
+
+  @@index([orgId])
+  @@index([serviceId])
+  @@index([customerIdentifier])
+  @@index([isSandbox])
+}
+
+model Message {
+  id              String      @id @default(uuid()) @db.Uuid
+  conversationId  String      @db.Uuid
+  role            MessageRole
+  content         String      @db.Text
+  toolCalls       Json?
+  toolCallId      String?
+  metadata        Json        @default("{}")
+  createdAt       DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model CallLog {
+  id              String       @id @default(uuid()) @db.Uuid
+  orgId           String       @db.Uuid
+  conversationId  String?      @db.Uuid
+  phoneNumberId   String?      @db.Uuid
+  direction       CallDirection
+  fromNumber      String
+  toNumber        String
+  status          CallStatus
+  durationSeconds Int?
+  recordingUrl    String?
+  transcript      String?      @db.Text
+  outcome         CallOutcome?
+  costCents       Int?
+  isSandbox       Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  phoneNumber  PhoneNumber?   @relation(fields: [phoneNumberId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([conversationId])
+  @@index([phoneNumberId])
+  @@index([isSandbox])
+  @@index([createdAt])
+}
+
+model Credential {
+  id                String          @id @default(uuid()) @db.Uuid
+  orgId             String          @db.Uuid
+  type              CredentialType
+  name              String
+  secretRef         String          @unique
+  config            Json            @default("{}")
+  status            CredentialStatus @default(disconnected)
+  lastValidatedAt   DateTime?
+  validationError   String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([type])
+  @@index([status])
+}
+
+model PhoneNumber {
+  id              String             @id @default(uuid()) @db.Uuid
+  orgId           String             @db.Uuid
+  serviceId       String?            @db.Uuid
+  provider        String             @default("twilio")
+  providerSid     String             @unique
+  phoneNumber     String             @unique
+  friendlyName    String?
+  capabilities    Json               @default("{}")
+  status          PhoneNumberStatus  @default(pending)
+  monthlyCostCents Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  callLogs     CallLog[]
+
+  @@index([orgId])
+  @@index([serviceId])
+  @@index([status])
+}
+
+model Notification {
+  id                  String            @id @default(uuid()) @db.Uuid
+  orgId               String            @db.Uuid
+  type                NotificationType
+  channel             NotificationChannel
+  recipient           String
+  subject             String?
+  body                String            @db.Text
+  status              NotificationStatus @default(pending)
+  relatedEntityType   String?
+  relatedEntityId     String?           @db.Uuid
+  scheduledFor        DateTime          @db.Timestamptz
+  sentAt              DateTime?
+  error               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([relatedEntityType, relatedEntityId])
+}
+
+model SubscriptionPlan {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  priceCents  Int
+  currency    String   @default("USD")
+  interval    SubscriptionPlanInterval
+  features    Json     @default("{}")
+  limits      Json     @default("{}")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                     String             @id @default(uuid()) @db.Uuid
+  orgId                  String             @unique @db.Uuid
+  planId                 String             @db.Uuid
+  status                 SubscriptionStatus @default(trialing)
+  currentPeriodStart     DateTime           @db.Timestamptz
+  currentPeriodEnd       DateTime           @db.Timestamptz
+  cancelAtPeriodEnd      Boolean            @default(false)
+  stripeSubscriptionId   String?            @unique
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  plan       SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  usageRecords UsageRecord[]
+}
+
+model UsageRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @db.Uuid
+  subscriptionId  String?  @db.Uuid
+  metric          String
+  quantity        Int
+  periodStart     DateTime @db.Timestamptz
+  periodEnd       DateTime @db.Timestamptz
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([subscriptionId])
+  @@index([metric])
+  @@index([periodStart, periodEnd])
+}
+
+model AuditLog {
+  id           String         @id @default(uuid()) @db.Uuid
+  orgId        String?        @db.Uuid
+  actorId      String?        @db.Uuid
+  actorType    AuditActorType
+  action       String
+  resourceType String
+  resourceId   String?        @db.Uuid
+  before       Json?
+  after        Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime       @default(now())
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+model TemplateLibrary {
+  id          String   @id @default(uuid()) @db.Uuid
+  category    String
+  name        String
+  description String?
+  content     Json
+  isOfficial  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isOfficial])
+}
+
+model CalendarConnection {
+  id                String                 @id @default(uuid()) @db.Uuid
+  orgId             String                 @db.Uuid
+  provider          CalendarProvider
+  externalAccountId String
+  accessTokenRef    String
+  refreshTokenRef   String?
+  expiresAt         DateTime?
+  scope             String[]
+  status            CalendarConnectionStatus @default(connected)
+  lastSyncedAt      DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  staff        Staff[]
+
+  @@index([orgId])
+  @@index([provider])
+  @@index([status])
+}
+
+model WhatsAppBotConfig {
+  id                String   @id @default(uuid()) @db.Uuid
+  orgId             String   @db.Uuid
+  serviceId         String   @unique @db.Uuid
+  webhookUrl        String?
+  verifyToken       String?
+  businessAccountId String?
+  phoneNumberId     String?
+  defaultLanguage   String   @default("en")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  templates    WhatsAppTemplate[]
+
+  @@index([orgId])
+}
+
+model WhatsAppTemplate {
+  id                   String               @id @default(uuid()) @db.Uuid
+  orgId                String               @db.Uuid
+  whatsappBotConfigId  String?              @db.Uuid
+  name                 String
+  language             String
+  category             WhatsAppTemplateCategory
+  components           Json
+  status               WhatsAppTemplateStatus @default(pending)
+  externalId           String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  whatsappBotConfig WhatsAppBotConfig? @relation(fields: [whatsappBotConfigId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@index([whatsappBotConfigId])
+  @@index([status])
+}
+
+model WebsiteConfig {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @db.Uuid
+  serviceId    String   @unique @db.Uuid
+  subdomain    String?  @unique
+  customDomain String?  @unique
+  theme        String
+  themeConfig  Json     @default("{}")
+  seoConfig    Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  service      Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  versions     WebsiteVersion[]
+
+  @@index([orgId])
+  @@index([subdomain])
+  @@index([customDomain])
+}
+
+model WebsiteVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  websiteConfigId  String   @db.Uuid
+  version          Int
+  content          Json
+  isPublished      Boolean  @default(false)
+  publishedAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  websiteConfig WebsiteConfig @relation(fields: [websiteConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteConfigId, version])
+  @@index([isPublished])
+}

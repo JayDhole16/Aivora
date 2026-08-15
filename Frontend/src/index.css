@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  /* Channel accent colors */
+  --color-voice: #6366f1;
+  --color-voice-light: #eef2ff;
+  --color-voice-dark: #4338ca;
+
+  --color-whatsapp: #10b981;
+  --color-whatsapp-light: #ecfdf5;
+  --color-whatsapp-dark: #059669;
+
+  --color-website: #0ea5e9;
+  --color-website-light: #f0f9ff;
+  --color-website-dark: #0284c7;
+
+  /* Status colors */
+  --color-live: #22c55e;
+  --color-testing: #f59e0b;
+  --color-draft: #94a3b8;
+  --color-paused: #f97316;
+  --color-needs-attention: #ef4444;
+
+  /* Base */
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  @apply bg-neutral-50 text-neutral-900;
+}
+
+/* Focus rings — WCAG 2.1 AA */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-300 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-400;
+}
+
+/* Smooth transitions */
+.transition-base {
+  transition: all 0.2s ease;
+}
